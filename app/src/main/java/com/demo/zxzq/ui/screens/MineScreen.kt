@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,10 +43,12 @@ import com.demo.zxzq.data.AccountSummary
 import com.demo.zxzq.data.MockData
 import com.demo.zxzq.data.Quote
 import com.demo.zxzq.data.QuoteRepository
+import com.demo.zxzq.data.TradeRepository
 import com.demo.zxzq.data.money
 import com.demo.zxzq.ui.components.SearchTopBar
 import com.demo.zxzq.ui.icons.ZxIcons
 import com.demo.zxzq.ui.theme.ZxColors
+import com.demo.zxzq.ui.theme.NumberFont
 import kotlinx.coroutines.delay
 
 @Composable
@@ -55,17 +58,25 @@ fun MineScreen(
     onLogout: () -> Unit = {},
     onOpenHolding: () -> Unit = {},
 ) {
-    // 已登录时拉行情，按持仓算资产（与交易页共用同一套计算）。
+    // 交易数据（持仓 + 可用现金）来自可观察仓库，下单成交后本页联动。
+    val tradeState by TradeRepository.state.collectAsState()
+    val holdings = tradeState.holdings
+    val codes = holdings.map { it.code }
+
+    // 已登录时拉行情，按持仓算资产（与交易页共用同一套计算）。codes 变化时重启轮询。
     var quotes by remember { mutableStateOf<Map<String, Quote>>(emptyMap()) }
-    LaunchedEffect(isLoggedIn) {
+    LaunchedEffect(isLoggedIn, codes) {
         if (!isLoggedIn) return@LaunchedEffect
         while (true) {
-            val q = QuoteRepository.fetch(MockData.holdings.map { it.code })
-            if (q.isNotEmpty()) quotes = q
+            val q = QuoteRepository.fetch(codes)
+            if (q.isNotEmpty()) {
+                quotes = q
+                TradeRepository.updateQuotes(q)
+            }
             delay(60_000)
         }
     }
-    val summary = MockData.summarize(QuoteRepository.toViews(MockData.holdings, quotes))
+    val summary = MockData.summarize(QuoteRepository.toViews(holdings, quotes), tradeState.cash, tradeState.todaySells)
 
     Column(Modifier.fillMaxSize().background(ZxColors.ScreenBg)) {
         SearchTopBar()
@@ -116,6 +127,7 @@ private fun AccountHeader() {
             Text(
                 MockData.MINE_PHONE,
                 fontSize = 18.sp,
+                fontFamily = NumberFont,
                 fontWeight = FontWeight.Bold,
                 color = ZxColors.TextPrimary
             )
@@ -196,7 +208,7 @@ private fun LoggedInAssetCard(
             Modifier.fillMaxWidth().padding(bottom = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(MockData.MINE_TRADE_ACCOUNT, fontSize = 15.sp, color = ZxColors.TextSecondary, fontWeight = FontWeight.Medium)
+            Text(MockData.MINE_TRADE_ACCOUNT, fontSize = 15.sp, fontFamily = NumberFont, color = ZxColors.TextSecondary, fontWeight = FontWeight.Medium)
             Icon(Icons.Filled.KeyboardArrowDown, null, tint = ZxColors.TextTertiary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.weight(1f))
             Text("退出", fontSize = 15.sp, color = ZxColors.TextSecondary, modifier = Modifier.clickable { onLogout() })
@@ -238,13 +250,13 @@ private fun LoggedInAssetCard(
             Column(Modifier.weight(1f)) {
                 Text("人民币总资产(元)", fontSize = 12.sp, color = ZxColors.TextSecondary)
                 Spacer(Modifier.height(6.dp))
-                Text(money(summary.totalAsset), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = ZxColors.TextPrimary, maxLines = 1, softWrap = false)
+                Text(money(summary.totalAsset), fontSize = 22.sp, fontFamily = NumberFont, fontWeight = FontWeight.Bold, color = ZxColors.TextPrimary, maxLines = 1, softWrap = false)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                 Text("昨日收益(元)", fontSize = 12.sp, color = ZxColors.TextSecondary)
                 Spacer(Modifier.height(6.dp))
-                Text(money(summary.todayProfit), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = pnlColor(summary.todayProfit), maxLines = 1, softWrap = false)
+                Text(money(summary.todayProfit), fontSize = 22.sp, fontFamily = NumberFont, fontWeight = FontWeight.Bold, color = pnlColor(summary.todayProfit), maxLines = 1, softWrap = false)
             }
         }
 
@@ -273,13 +285,13 @@ private fun AssetRow(
     ) {
         Text(leftLabel, fontSize = 14.sp, color = ZxColors.TextPrimary, modifier = Modifier.width(56.dp))
         Text(
-            leftValue, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+            leftValue, fontSize = 15.sp, fontFamily = NumberFont, fontWeight = FontWeight.Medium,
             color = ZxColors.TextPrimary, modifier = Modifier.weight(1f)
         )
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
             Text(rightLabel, fontSize = 12.sp, color = ZxColors.TextSecondary)
             Spacer(Modifier.height(2.dp))
-            Text(rightValue, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = rightColor)
+            Text(rightValue, fontSize = 14.sp, fontFamily = NumberFont, fontWeight = FontWeight.Medium, color = rightColor)
         }
         Icon(Icons.Outlined.KeyboardArrowRight, null, tint = ZxColors.TextTertiary, modifier = Modifier.size(16.dp))
     }
@@ -309,7 +321,7 @@ private fun AnalysisRow() {
             Spacer(Modifier.height(12.dp))
             Row {
                 Text("战胜", fontSize = 14.sp, color = ZxColors.TextPrimary)
-                Text(MockData.MINE_BEAT_PCT, fontSize = 14.sp, color = ZxColors.Brand, fontWeight = FontWeight.Bold)
+                Text(MockData.MINE_BEAT_PCT, fontSize = 14.sp, fontFamily = NumberFont, color = ZxColors.Brand, fontWeight = FontWeight.Bold)
                 Text("投资者", fontSize = 14.sp, color = ZxColors.TextPrimary)
             }
             Spacer(Modifier.height(8.dp))
@@ -338,13 +350,13 @@ private fun AnalysisRow() {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("收益(元)", fontSize = 12.sp, color = ZxColors.TextSecondary)
                 Spacer(Modifier.weight(1f))
-                Text(MockData.MINE_MONTH_PROFIT, fontSize = 14.sp, color = ZxColors.Down, fontWeight = FontWeight.Medium)
+                Text(MockData.MINE_MONTH_PROFIT, fontSize = 14.sp, fontFamily = NumberFont, color = ZxColors.Down, fontWeight = FontWeight.Medium)
             }
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("收益率", fontSize = 12.sp, color = ZxColors.TextSecondary)
                 Spacer(Modifier.weight(1f))
-                Text(MockData.MINE_MONTH_PCT, fontSize = 14.sp, color = ZxColors.Down, fontWeight = FontWeight.Medium)
+                Text(MockData.MINE_MONTH_PCT, fontSize = 14.sp, fontFamily = NumberFont, color = ZxColors.Down, fontWeight = FontWeight.Medium)
             }
             Spacer(Modifier.height(8.dp))
             MiniLineChart(Modifier.fillMaxWidth().height(36.dp))

@@ -63,23 +63,29 @@ fun TradeQueryScreen(onBack: () -> Unit = {}, onOpenStatement: () -> Unit = {}) 
             }
         }
 
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Spacer(Modifier.height(8.dp))
-            QuerySection("委托与成交", listOf(
-                "当日委托", "当日成交", "当日成交汇总",
-                "历史委托", "历史成交", "历史成交汇总",
-                "在途证券", "已清仓证券", "T操作",
-            ))
-            QuerySection("流水查询", listOf(
-                "交割单", "对账单", "证券退市流水",
-                "当日资金流水", "历史资金流水", "转账资金汇总",
-            ), onItemClick = { label -> if (label == "交割单") onOpenStatement() })
-            QuerySection("更多查询", listOf(
-                "普通账号\n及交易权限", "资金查询", "限售股查询",
-                "其他查询",
-            ))
-            Spacer(Modifier.height(24.dp))
-        }
+        TradeQueryContent(onOpenStatement = onOpenStatement)
+    }
+}
+
+/** 查询宫格内容（无脚手架）。查询页 overlay 与交易页「查询」tab 共用。 */
+@Composable
+fun TradeQueryContent(onOpenStatement: () -> Unit = {}) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Spacer(Modifier.height(8.dp))
+        QuerySection("委托与成交", listOf(
+            "当日委托", "当日成交", "当日成交汇总",
+            "历史委托", "历史成交", "历史成交汇总",
+            "在途证券", "已清仓证券", "T操作",
+        ))
+        QuerySection("流水查询", listOf(
+            "交割单", "对账单", "证券退市流水",
+            "当日资金流水", "历史资金流水", "转账资金汇总",
+        ), onItemClick = { label -> if (label == "交割单") onOpenStatement() })
+        QuerySection("更多查询", listOf(
+            "普通账号\n及交易权限", "资金查询", "限售股查询",
+            "其他查询",
+        ))
+        Spacer(Modifier.height(24.dp))
     }
 }
 

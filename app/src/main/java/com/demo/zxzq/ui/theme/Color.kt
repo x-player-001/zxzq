@@ -9,8 +9,8 @@ object ZxColors {
     val Brand = Color(0xFFE60012)          // 品牌红 / 强调色
     val BrandDark = Color(0xFFD5000F)
 
-    val Up = Color(0xFFE93030)             // 涨（红）
-    val Down = Color(0xFF00A05A)           // 跌（绿）
+    val Up = Color(0xFFDA3636)             // 涨（红，采样真实 App）
+    val Down = Color(0xFF199166)           // 跌（绿，采样真实 App）
     val Flat = Color(0xFF9AA0A6)           // 平
 
     val TextPrimary = Color(0xFF1A1A1A)    // 主要文字

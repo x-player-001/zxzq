@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.demo.zxzq.R
+import com.demo.zxzq.ui.screens.ClosedPositionScreen
 import com.demo.zxzq.ui.screens.ImageScreen
 import com.demo.zxzq.ui.screens.LoginScreen
 import com.demo.zxzq.ui.screens.MineScreen
@@ -69,6 +70,7 @@ fun AppScaffold() {
     // 交易主页 → 查询页 → 交割单，逐级覆盖。
     var showQuery by remember { mutableStateOf(false) }
     var showStatement by remember { mutableStateOf(false) }
+    var showClosed by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(ZxColors.ScreenBg)) {
@@ -106,7 +108,11 @@ fun AppScaffold() {
         // 全屏覆盖的持仓页（含系统返回处理）。
         if (showTrade) {
             BackHandler { showTrade = false }
-            TradeScreen(onBack = { showTrade = false })
+            TradeScreen(
+                onBack = { showTrade = false },
+                onOpenStatement = { showStatement = true },
+                onOpenClosed = { showClosed = true }
+            )
         }
 
         // 查询页覆盖（交易主页“查”进入）。
@@ -122,6 +128,12 @@ fun AppScaffold() {
         if (showStatement) {
             BackHandler { showStatement = false }
             StatementScreen(onBack = { showStatement = false })
+        }
+
+        // 已清仓证券覆盖（持仓页“已清仓证券”进入）。
+        if (showClosed) {
+            BackHandler { showClosed = false }
+            ClosedPositionScreen(onBack = { showClosed = false })
         }
     }
 }

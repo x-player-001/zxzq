@@ -14,28 +14,34 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import android.widget.Toast
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.demo.zxzq.data.MockData
 import com.demo.zxzq.data.StatementItem
+import com.demo.zxzq.data.TradeRepository
 import com.demo.zxzq.ui.theme.ZxColors
+import com.demo.zxzq.ui.theme.NumberFont
 
 /** 交割单页（图3）。 */
 @Composable
@@ -98,11 +104,45 @@ fun StatementScreen(onBack: () -> Unit = {}) {
             Spacer(Modifier.height(8.dp))
         }
 
+        // 真实资金流水（买卖成交 / 分红入账），最新在上。
+        val tradeState by TradeRepository.state.collectAsState()
+        val rows = tradeState.statements.asReversed()
+        val context = LocalContext.current
+        var confirmDelete by remember { mutableStateOf(false) }
+
         LazyColumn(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
-            items(MockData.statements) { StatementCard(it) }
+            itemsIndexed(rows) { index, item ->
+                // 仅最新一条、且属于 UI 手动操作时可删（历史种子不可删）。
+                val canDelete = index == 0 && tradeState.uiOpCount > 0
+                StatementCard(item, canDelete = canDelete, onDelete = { confirmDelete = true })
+            }
+        }
+
+        if (confirmDelete) {
+            val top = rows.firstOrNull()
+            AlertDialog(
+                onDismissRequest = { confirmDelete = false },
+                title = { Text("撤回最后一笔操作") },
+                text = { Text("将删除「${top?.title ?: ""} ${top?.secName ?: ""}」，账户回到该操作之前的状态，且不可恢复。确认撤回？") },
+                confirmButton = {
+                    Text(
+                        "确认撤回", color = ZxColors.Brand, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable {
+                            val r = TradeRepository.undoLastUiOp()
+                            val msg = if (r is com.demo.zxzq.data.OrderResult.Failure) r.reason else "已撤回"
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            confirmDelete = false
+                        }.padding(8.dp)
+                    )
+                },
+                dismissButton = {
+                    Text("取消", color = ZxColors.TextSecondary,
+                        modifier = Modifier.clickable { confirmDelete = false }.padding(8.dp))
+                },
+            )
         }
     }
 }
@@ -120,7 +160,7 @@ private fun DateChip(text: String, modifier: Modifier) {
 }
 
 @Composable
-private fun StatementCard(s: StatementItem) {
+private fun StatementCard(s: StatementItem, canDelete: Boolean = false, onDelete: () -> Unit = {}) {
     // 发生金额为负=绿（支出），正=红/黑（收入），这里按 A 股：正红负绿
     val amountColor = if (s.amount.startsWith("-")) ZxColors.Down else ZxColors.TextPrimary
     Column(Modifier.fillMaxWidth().background(ZxColors.CardBg).padding(16.dp)) {
@@ -133,19 +173,32 @@ private fun StatementCard(s: StatementItem) {
             }
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text(s.title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ZxColors.TextPrimary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(s.title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = ZxColors.TextPrimary)
+                    if (canDelete) {
+                        Spacer(Modifier.width(8.dp))
+                        // 撤回按钮：仅最新一笔 UI 操作可删
+                        Box(
+                            Modifier.background(ZxColors.ChipBgRedLight, RoundedCornerShape(4.dp))
+                                .clickable { onDelete() }
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text("撤回", fontSize = 11.sp, color = ZxColors.Brand)
+                        }
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
-                Text(s.date, fontSize = 12.sp, color = ZxColors.TextTertiary)
+                Text(s.date, fontSize = 12.sp, fontFamily = NumberFont, color = ZxColors.TextTertiary)
             }
             Column(horizontalAlignment = Alignment.End) {
                 Row {
                     Text("发生金额 ", fontSize = 12.sp, color = ZxColors.TextSecondary)
-                    Text(s.amount, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = amountColor)
+                    Text(s.amount, fontSize = 16.sp, fontFamily = NumberFont, fontWeight = FontWeight.Bold, color = amountColor)
                 }
                 Spacer(Modifier.height(6.dp))
                 Row {
                     Text("资金余额 ", fontSize = 12.sp, color = ZxColors.TextSecondary)
-                    Text(s.balance, fontSize = 14.sp, color = ZxColors.TextPrimary)
+                    Text(s.balance, fontSize = 14.sp, fontFamily = NumberFont, color = ZxColors.TextPrimary)
                 }
             }
         }
@@ -169,7 +222,7 @@ private fun StatementCard(s: StatementItem) {
             Spacer(Modifier.height(10.dp))
             Row {
                 Text("证券余额", fontSize = 14.sp, color = ZxColors.TextSecondary, modifier = Modifier.width(72.dp))
-                Text(s.secBalance, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = ZxColors.TextPrimary)
+                Text(s.secBalance, fontSize = 15.sp, fontFamily = NumberFont, fontWeight = FontWeight.Bold, color = ZxColors.TextPrimary)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -183,11 +236,11 @@ private fun DetailRow(l1: String, v1: String, l2: String, v2: String, boldValue:
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(Modifier.weight(1f)) {
             Text(l1, fontSize = 14.sp, color = ZxColors.TextSecondary, modifier = Modifier.width(72.dp))
-            Text(v1, fontSize = 14.sp, fontWeight = if (boldValue) FontWeight.Bold else FontWeight.Normal, color = ZxColors.TextPrimary)
+            Text(v1, fontSize = 14.sp, fontFamily = NumberFont, fontWeight = if (boldValue) FontWeight.Bold else FontWeight.Normal, color = ZxColors.TextPrimary)
         }
         Row(Modifier.weight(1f)) {
             Text(l2, fontSize = 14.sp, color = ZxColors.TextSecondary, modifier = Modifier.width(88.dp))
-            Text(v2, fontSize = 14.sp, fontWeight = if (boldValue) FontWeight.Bold else FontWeight.Normal, color = ZxColors.TextPrimary)
+            Text(v2, fontSize = 14.sp, fontFamily = NumberFont, fontWeight = if (boldValue) FontWeight.Bold else FontWeight.Normal, color = ZxColors.TextPrimary)
         }
     }
 }

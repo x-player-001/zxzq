@@ -21,10 +21,31 @@ object QuoteRepository {
 
     private const val REFERER = "https://finance.sina.com.cn"
 
+    /**
+     * 规范化证券代码为新浪格式（小写 sh/sz 前缀）。
+     * - 已带前缀：仅转小写，如 SH601288 → sh601288
+     * - 纯 6 位数字：按首位补前缀。6/9 开头=沪市(sh)，0/2/3 开头=深市(sz)
+     * - 无法识别：原样返回（由调用方兜底）
+     */
+    fun normalizeCode(raw: String): String {
+        val c = raw.trim().lowercase()
+        if (c.matches(Regex("(sh|sz)\\d{6}"))) return c
+        if (c.matches(Regex("\\d{6}"))) {
+            return when (c[0]) {
+                '6', '9' -> "sh$c"
+                '0', '2', '3' -> "sz$c"
+                else -> c
+            }
+        }
+        return c
+    }
+
     /** 拉取一组代码的实时行情；失败或缺失的代码不会出现在结果中。 */
     suspend fun fetch(codes: List<String>): Map<String, Quote> = withContext(Dispatchers.IO) {
-        if (codes.isEmpty()) return@withContext emptyMap()
-        val url = URL("https://hq.sinajs.cn/list=" + codes.joinToString(","))
+        // 规范化并过滤掉非法代码，避免坏代码拖垮整批请求。
+        val valid = codes.map { normalizeCode(it) }.filter { it.matches(Regex("(sh|sz)\\d{6}")) }.distinct()
+        if (valid.isEmpty()) return@withContext emptyMap()
+        val url = URL("https://hq.sinajs.cn/list=" + valid.joinToString(","))
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 8000
@@ -64,11 +85,12 @@ object QuoteRepository {
             val code = m.groupValues[1]
             val fields = m.groupValues[2].split(",")
             if (fields.size > 3) {
+                val name = fields[0]  // 新浪返回体第 0 字段为证券名称
                 val price = fields[3].toDoubleOrNull() ?: return@forEach
                 val prevClose = fields[2].toDoubleOrNull() ?: price
                 // 停牌等情况现价可能为 0，回退到昨收
                 val real = if (price > 0.0) price else prevClose
-                if (real > 0.0) result[code] = Quote(code, real, prevClose)
+                if (real > 0.0) result[code] = Quote(code, real, prevClose, name)
             }
         }
         return result

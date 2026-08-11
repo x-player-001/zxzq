@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,25 +42,35 @@ import androidx.compose.ui.unit.sp
 import com.demo.zxzq.data.MockData
 import com.demo.zxzq.data.Quote
 import com.demo.zxzq.data.QuoteRepository
+import com.demo.zxzq.data.TradeRepository
 import com.demo.zxzq.data.money
 import com.demo.zxzq.ui.icons.ZxIcons
 import com.demo.zxzq.ui.theme.ZxColors
+import com.demo.zxzq.ui.theme.NumberFont
 import kotlinx.coroutines.delay
 
 /** 交易主页（图1）。点右上“查”进入查询页。未登录时资产隐藏为 ****。 */
 @Composable
 fun TradeHomeScreen(isLoggedIn: Boolean = true, onOpenQuery: () -> Unit = {}) {
-    // 实时行情驱动资产卡（登录后才拉）。
+    // 交易数据（持仓 + 可用现金）来自可观察仓库，下单成交后本页联动。
+    val tradeState by TradeRepository.state.collectAsState()
+    val holdings = tradeState.holdings
+    val codes = holdings.map { it.code }
+
+    // 实时行情驱动资产卡（登录后才拉）。codes 变化时重启轮询。
     var quotes by remember { mutableStateOf<Map<String, Quote>>(emptyMap()) }
-    LaunchedEffect(isLoggedIn) {
+    LaunchedEffect(isLoggedIn, codes) {
         if (!isLoggedIn) return@LaunchedEffect
         while (true) {
-            val q = QuoteRepository.fetch(MockData.holdings.map { it.code })
-            if (q.isNotEmpty()) quotes = q
+            val q = QuoteRepository.fetch(codes)
+            if (q.isNotEmpty()) {
+                quotes = q
+                TradeRepository.updateQuotes(q)
+            }
             delay(60_000)
         }
     }
-    val s = MockData.summarize(QuoteRepository.toViews(MockData.holdings, quotes))
+    val s = MockData.summarize(QuoteRepository.toViews(holdings, quotes), tradeState.cash, tradeState.todaySells)
 
     LazyColumn(
         Modifier.fillMaxSize().background(ZxColors.ScreenBg),
@@ -97,7 +108,7 @@ private fun TopCategoryBar() {
             Text("资金账号", fontSize = 11.sp, color = ZxColors.TextTertiary)
             Spacer(Modifier.height(1.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(MockData.MINE_TRADE_ACCOUNT, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ZxColors.TextPrimary)
+                Text(MockData.MINE_TRADE_ACCOUNT, fontSize = 16.sp, fontFamily = NumberFont, fontWeight = FontWeight.Bold, color = ZxColors.TextPrimary)
                 Icon(Icons.Filled.KeyboardArrowDown, null, tint = ZxColors.TextTertiary, modifier = Modifier.size(16.dp))
             }
         }
@@ -179,7 +190,7 @@ private fun AssetCard(s: com.demo.zxzq.data.AccountSummary, hidden: Boolean) {
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(mask(s.totalAsset), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = ZxColors.TextPrimary, maxLines = 1, softWrap = false)
+            Text(mask(s.totalAsset), fontSize = 26.sp, fontFamily = NumberFont, fontWeight = FontWeight.Bold, color = ZxColors.TextPrimary, maxLines = 1, softWrap = false)
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = ZxColors.TextTertiary, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.height(14.dp))
@@ -219,10 +230,10 @@ private fun AssetMetric(
         }
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1, softWrap = false)
+            Text(value, fontSize = 16.sp, fontFamily = NumberFont, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1, softWrap = false)
             if (suffix != null) {
                 Spacer(Modifier.width(3.dp))
-                Text(suffix, fontSize = 11.sp, color = valueColor, maxLines = 1, softWrap = false, modifier = Modifier.padding(bottom = 2.dp))
+                Text(suffix, fontSize = 11.sp, fontFamily = NumberFont, color = valueColor, maxLines = 1, softWrap = false, modifier = Modifier.padding(bottom = 2.dp))
             }
             if (arrow) Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, tint = ZxColors.TextTertiary, modifier = Modifier.size(14.dp))
         }
@@ -245,7 +256,7 @@ private fun MonthReturnCard() {
         }
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(MockData.MINE_MONTH_PROFIT.replace(",", ""), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = ZxColors.Down)
+            Text(MockData.MINE_MONTH_PROFIT.replace(",", ""), fontSize = 24.sp, fontFamily = NumberFont, fontWeight = FontWeight.Bold, color = ZxColors.Down)
             Text("元", fontSize = 13.sp, color = ZxColors.TextSecondary, modifier = Modifier.padding(start = 2.dp, bottom = 3.dp))
             Spacer(Modifier.width(12.dp))
             Text("再加把劲！相对沪深300 ", fontSize = 13.sp, color = Color(0xFFB98A3A), modifier = Modifier.padding(bottom = 3.dp))
